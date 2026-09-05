@@ -1,0 +1,5 @@
+# Скриптҳо ва конфигҳои Docker ҳамеша бо LF.
+# Бо CRLF контейнер бо хатои `bad interpreter: no such file` меафтад —
+# Linux `\r`-ро қисми номи интерпретатор мешуморад.
+*.sh        text eol=lf
+Dockerfile  text eol=lf

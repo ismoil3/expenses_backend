@@ -1,0 +1,54 @@
+services:
+  db:
+    container_name: amiri_db
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-amiri}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?нест дар .env}
+      POSTGRES_DB: ${POSTGRES_DB:-amiri}
+    volumes:
+      - amiri_pgdata:/var/lib/postgresql/data
+    ports:
+      # Танҳо барои назорати дастӣ. Порт ғайримаъмул аст, то бо
+      # Postgres-и мавҷуди сервер бархӯрд накунад.
+      - "127.0.0.1:${DB_PORT:-5459}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-amiri}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - amiri
+
+  api:
+    container_name: amiri_api
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Дар дохили шабака база бо номи контейнер дастрас аст
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-amiri}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-amiri}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8347}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks:
+      - amiri
+
+volumes:
+  amiri_pgdata:
+
+networks:
+  # Шабакаи умумӣ бо панел: nginx-и панел ба `amiri_api` муроҷиат мекунад.
+  # Пеш аз оғоз як бор:  docker network create amiri_net
+  amiri:
+    name: amiri_net
+    external: true

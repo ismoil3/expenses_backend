@@ -1,0 +1,27 @@
+# Сирҳо ҳеҷ гоҳ ба образ намераванд — онҳо аз env_file меоянд
+.env
+.env.*
+!.env.example
+
+# Муҳити маҳаллӣ
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Абзорҳо
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Git ва ҳуҷҷатҳо
+.git/
+.gitignore
+README.md
+
+# Худи Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
