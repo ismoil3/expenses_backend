@@ -1,0 +1,26 @@
+# --- Сирҳо ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+
+# --- муҳити виртуалӣ ---
+.venv/
+venv/
+env/
+
+# --- абзорҳо ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- маълумоти маҳаллӣ ---
+*.sqlite3
+*.db

@@ -1,0 +1,40 @@
+"""Ҳар паём як сессияи БД ва як корбар мегирад."""
+
+import logging
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+from aiogram import BaseMiddleware
+from aiogram.types import TelegramObject, User as TgUser
+
+from app.db.session import SessionLocal
+from app.services import users
+
+log = logging.getLogger(__name__)
+
+
+class UserSessionMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict[str, Any],
+    ) -> Any:
+        tg_user: TgUser | None = data.get("event_from_user")
+        if tg_user is None or tg_user.is_bot:
+            return None
+
+        async with SessionLocal() as session:
+            user = await users.get_or_create(
+                session,
+                tg_user.id,
+                username=tg_user.username,
+                first_name=tg_user.first_name,
+                language_code=tg_user.language_code,
+            )
+            data["session"] = session
+            data["user"] = user
+            result = await handler(event, data)
+            # Ҳангоми хато `async with` худаш rollback мекунад.
+            await session.commit()
+            return result
