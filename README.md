@@ -266,28 +266,50 @@ pytest
 
 ## Деплой через Docker
 
-Панель и API живут в **разных репозиториях**, но должны видеть друг друга.
-Связывает их общая docker-сеть — создаётся один раз:
+Панель живёт в [отдельном репозитории](https://github.com/ismoil3/expenses_frontend),
+но разворачиваются они вместе — одной командой, из общей папки:
 
-```bash
-docker network create amiri_net
+```
+expenses/
+├─ backend/            этот репозиторий
+├─ frontend/           панель
+├─ docker-compose.yml  копия backend/deploy/docker-compose.yml
+└─ .env                секреты, в git не попадает
 ```
 
-Дальше:
+Поднимаются три контейнера: `amiri_db` (PostgreSQL), `amiri_api` (бот + API),
+`amiri_web` (nginx с собранной панелью). Nginx панели проксирует `/api` на
+`amiri_api`, поэтому панель и API оказываются на одном origin: cookie сессии
+работает без оговорок и CORS не нужен вовсе.
+
+### Установка (Ubuntu 24)
 
 ```bash
-git clone https://github.com/ismoil3/expenses_backend.git
-cd expenses_backend
-cp .env.example .env
-nano .env                 # токен, ключ OpenAI, пароли, секреты
+# 1. Docker, если его ещё нет
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER && newgrp docker
+
+# 2. Код
+mkdir -p ~/expenses && cd ~/expenses
+git clone https://github.com/ismoil3/expenses_backend.git  backend
+git clone https://github.com/ismoil3/expenses_frontend.git frontend
+
+# 3. docker-compose.yml и .env со случайными секретами
+bash backend/deploy/setup.sh                 # адрес = IP сервера
+# bash backend/deploy/setup.sh вашдомен      # если есть домен: HTTPS + webhook
+
+# 4. Вписать BOT_TOKEN и OPENAI_API_KEY
+nano .env
+
+# 5. Старт
 docker compose up -d --build
 docker compose logs -f api
 ```
 
-Панель — [отдельно](https://github.com/ismoil3/expenses_frontend), тем же
-способом. Её nginx проксирует `/api` на контейнер `amiri_api`, поэтому панель
-и API оказываются на одном origin: cookie сессии работает без оговорок и CORS
-не нужен вовсе.
+`setup.sh` сам генерирует `POSTGRES_PASSWORD`, `JWT_SECRET` и `WEBHOOK_SECRET`
+через `openssl` и подставляет адрес сервера. Существующий `.env` он не трогает.
+
+Панель — `http://<IP>:8348`, API и Swagger — `http://<IP>:8347/docs`.
 
 ### Порты
 
@@ -296,41 +318,60 @@ docker compose logs -f api
 
 | Сервис | Порт хоста | Внутри |
 |---|---|---|
-| API | `8347` | 8000 |
 | Панель | `8348` | 80 |
+| API | `8347` | 8000 |
 | PostgreSQL | `5459`, только `127.0.0.1` | 5432 |
 
 База наружу не смотрит — порт открыт только на localhost сервера, для
 `psql` и бэкапов.
 
-### Продакшен-настройки
+Если включён `ufw`:
 
-В `.env` бэкенда:
+```bash
+sudo ufw allow 8348/tcp && sudo ufw allow 8347/tcp
+```
+
+### Домен и HTTPS
+
+По IP работает всё, кроме двух вещей: Telegram не принимает `http://` в
+кнопках-ссылках (бот отправляет ссылку текстом) и не открывает Mini App.
+С доменом включается и то, и другое — плюс режим webhook вместо polling.
+
+Домен направляется на порт панели: её nginx раздаёт саму панель, проксирует
+`/api` и `/webhook/` на API. То есть хватает **одного** домена. Например,
+через Caddy:
+
+```
+вашдомен {
+    reverse_proxy 127.0.0.1:8348
+}
+```
+
+В `.env` при этом:
 
 ```env
 BOT_MODE=webhook
-PUBLIC_URL=https://api.вашдомен       # или домен панели, если API за тем же nginx
-WEBHOOK_SECRET=<случайная строка>
-PANEL_URL=https://вашдомен            # адрес панели
-POSTGRES_PASSWORD=<случайный пароль>
-JWT_SECRET=<64 символа>
+PUBLIC_URL=https://вашдомен
+PANEL_URL=https://вашдомен
 ```
 
-При старте бот сам поставит вебхук на `PUBLIC_URL/webhook/<секрет>`.
-
-Как только `PANEL_URL` станет HTTPS, включатся Mini App и кнопки-ссылки:
-Telegram не принимает `localhost` в кнопках, поэтому на разработке они
-заменяются обычным текстом.
-
-Дальше остаётся направить домен на порт панели — например, через уже
-работающий на сервере nginx или Caddy, который выдаст HTTPS.
+Бот сам поставит вебхук на `PUBLIC_URL/webhook/<WEBHOOK_SECRET>` при старте.
 
 ### Обновление
 
 ```bash
-git pull
+cd ~/expenses
+git -C backend pull && git -C frontend pull
+cp backend/deploy/docker-compose.yml .
 docker compose up -d --build
 ```
 
 Миграции и системные категории накатываются при старте контейнера — руками
 ничего запускать не нужно.
+
+### Запуск репозиториев по отдельности
+
+В каждом репозитории есть свой `docker-compose.yml` — на случай, если API и
+панель нужно держать раздельно. Тогда их связывает общая сеть, создаётся один
+раз: `docker network create amiri_net`. Для обычного деплоя это не нужно —
+хватает варианта выше.
